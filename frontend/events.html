@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Events - MicroTix</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>MicroTix</h1>
+        <p>Your ultimate event ticketing platform</p>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li id="login-li" style="display: none;"><a href="login.html">Login</a></li>
+            <li id="signup-li" style="display: none;"><a href="signup.html">Signup</a></li>
+            <li><a href="events.html">Events</a></li>
+            <li><a href="tickets.html">Tickets</a></li>
+            <li><a href="#" id="welcome-message"></a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Events</h2>
+        <div class="tabs">
+            <button class="tab-button" onclick="showTab('event-list')">Get Event List</button>
+            <button class="tab-button" onclick="showTab('event-info')">Get Event Info</button>
+            <button class="tab-button" onclick="showTab('create-event')">Create Event</button>
+            <button class="tab-button" onclick="showTab('update-event')">Update Event</button>
+            <button class="tab-button" onclick="showTab('delete-event')">Delete Event</button>
+        </div>
+        <div class="tab-content" id="event-list">
+            <h3>Event List</h3>
+        </div>
+        <div class="tab-content" id="event-info" style="display: none;">
+            <h3>Event Info</h3>
+            <p id="event-info-paragraph">Details about the event will be displayed here.</p>
+        </div>
+        <div class="tab-content" id="create-event" style="display: none;">
+            <h3>Create Event</h3>
+            <form id="create-event-form">
+                <label for="event-name">Event Name:</label>
+                <input type="text" id="event-name" name="name" required>
+                <label for="event-start-date">Event Start Date:</label>
+                <input type="date" id="event-start-date" name="starttime" required>
+                <label for="event-end-date">Event End Date:</label>
+                <input type="date" id="event-end-date" name="endtime" required>
+                <label for="event-location">Event Location:</label>
+                <input type="text" id="event-location" name="address" required>
+                <label for="ticket-price">Ticket Price:</label>
+                <input type="text" id="ticket-price" name="ticketprice" required>
+                <label for="discount">Discount:</label>
+                <input type="text" id="discount" name="discount">
+                <label for="event-description">Event Description:</label>
+                <textarea id="event-description" name="description" required></textarea>
+                <button type="submit">Create Event</button>
+            </form>
+        </div>
+        <div class="tab-content" id="update-event" style="display: none;">
+            <h3>Update Event</h3>
+            <form onsubmit="updateEvent(event)">
+                <label for="event-id-update">Event ID:</label>
+                <input type="text" id="event-id-update" name="id" required>
+                <label for="event-name-update">Event Name:</label>
+                <input type="text" id="event-name-update" name="name">
+                <label for="event-start-date-update">Event Start Date:</label>
+                <input type="date" id="event-start-date-update" name="starttime">
+                <label for="event-end-date-update">Event End Date:</label>
+                <input type="date" id="event-end-date-update" name="endtime">
+                <label for="event-description-update">Event Description:</label>
+                <textarea id="event-description-update" name="description"></textarea>
+                <button type="submit">Update Event</button>
+            </form>
+        </div>
+        <div class="tab-content" id="delete-event" style="display: none;">
+            <h3>Delete Event</h3>
+            <form onsubmit="deleteEvent(event)">
+                <label for="event-id-delete">Event ID:</label>
+                <input type="text" id="event-id-delete" name="id" required>
+                <button type="submit">Delete Event</button>
+            </form>
+        </div>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.7.2/axios.min.js" integrity="sha512-JSCFHhKDilTRRXe9ak/FJ28dcpOJxzQaCd3Xg8MyF6XFjODhy/YMCM8HW0TFDckNHWUewW+kfvhin43hKtJxAw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <script>
+
+        const API = "https://d8z4knscvk.execute-api.localhost.localstack.cloud:4566/g7rlo2115h";
+
+        function showTab(tabId, eventInfo = null) {
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.style.display = 'none');
+            document.getElementById(tabId).style.display = 'block';
+
+            if (tabId === 'event-list') {
+                getEventList();
+            } else if (tabId === 'event-info') {
+                if (eventInfo)
+                    getEventInfo(eventInfo);
+            }
+        }
+
+        function getEventList() {
+            axios.get(`${API}/event`, {
+                headers: {
+                    'Authorization': localStorage.id_token,
+                    'Cache-Control': 'no-cache'
+                }
+            })
+            .then(function (response) {
+                createEventList(response.data);
+            })
+            .catch(function (error) {
+                alert('Error fetching event list');
+                console.error("Error: ", error);
+            });
+        }
+
+        function createEventList(events) {
+            const eventListContainer = document.getElementById('event-list');
+            eventListContainer.innerHTML = '';
+
+            const ul = document.createElement('ul');
+
+            events.records.forEach(record => {
+                const li = document.createElement('li');
+
+                const eventId = record[1].stringValue;
+                const eventName = record[2].stringValue;
+                const eventDescription = record[3].stringValue;
+                const eventStartDate = record[4].stringValue;
+                const eventEndDate = record[5].stringValue;
+                const eventLocation = record[6].stringValue;
+                const ticketPrice = record[7].stringValue;
+                const discount = record[8].stringValue;
+
+                const eventInfo = `
+                    <div>
+                        <div style="display: none;" id="event_id">${eventId}</div>
+                        <strong>Name:</strong> ${eventName}<br>
+                        <strong>Description:</strong> ${eventDescription}<br>
+                        <strong>Start Date:</strong> ${eventStartDate}<br>
+                        <strong>End Date:</strong> ${eventEndDate}<br>
+                        <strong>Location:</strong> ${eventLocation}<br>
+                        <strong>Ticket Price:</strong> ${ticketPrice}<br>
+                        <strong>Discount:</strong> ${discount}
+                    </div>
+                `;
+
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = eventName;
+                a.onclick = function() {
+                    showTab('event-info', eventInfo);
+                };
+
+                li.appendChild(a);
+                ul.appendChild(li);
+            });
+
+            eventListContainer.appendChild(ul);
+        }
+
+        function getEventInfo(eventInfo) {
+            const eventInfoParagraph = document.getElementById('event-info-paragraph');
+            eventInfoParagraph.innerHTML = eventInfo;
+
+            const button = document.createElement('button');
+            button.textContent = 'Request a Ticket';
+
+            const eventId = document.getElementById('event_id').innerHTML
+            button.onclick = function() {
+                requestTicket(eventId);
+            };
+
+            eventInfoParagraph.appendChild(button);
+
+            const ROLE = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1]))['custom:role'];
+            button.style = ROLE == 'customer' ? 'display: block;' : 'display: none';
+        }
+
+        function requestTicket(eventId) {
+            window.location.href = `payment.html?event=${eventId}`;
+        }
+
+        document.getElementById('create-event-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            createEvent(event.target);
+        });
+
+        function createEvent(event) {
+            const formData = new FormData(event);
+
+            const email = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1])).email;
+            formData.set('organizer_id', email);
+
+            const eventOject = Object.fromEntries(formData.entries());
+
+            axios.post(`${API}/event`, eventOject, {
+                headers: {
+                    'Authorization': localStorage.getItem('id_token')
+                }
+            })
+            .then(function (response) {
+                alert("Event created successfully");
+            })
+            .catch(function (error) {
+                alert("Error creating event");
+                console.error("Error: ", error);
+            });
+        }
+
+        function updateEvent(event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+            const eventId = formData.get('id');
+
+            const props = Object.fromEntries(Array.from(formData.entries()));
+
+            axios.put(`${API}/event/${eventId}`, props, {
+                headers: {
+                    'Authorization': localStorage.getItem('id_token')
+                }
+            })
+            .then(function (response) {
+                alert("Event updated successfully");
+            })
+            .catch(function (error) {
+                alert("Error updating event");
+                console.error("Error: ", error);
+            });
+        }
+
+        function deleteEvent(event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+            const eventId = formData.get('id');
+
+            axios.delete(`${API}/event/${eventId}`, {
+                headers: {
+                    'Authorization': localStorage.getItem('id_token')
+                }
+            })
+            .then(function (response) {
+                alert("Event deleted successfully");
+            })
+            .catch(function (error) {
+                alert("Error deleting event");
+                console.error("Error: ", error);
+            });
+        }
+
+        function getUserName() {
+            const ID_TOKEN = localStorage.getItem('id_token');
+
+            if (ID_TOKEN !== null) {
+                const USERNAME = JSON.parse(atob(ID_TOKEN.split('.')[1])).name;
+                document.getElementById('welcome-message').textContent = `Welcome ${USERNAME}`;
+                document.getElementById('login-li').style.display = 'none';
+                document.getElementById('signup-li').style.display = 'none';
+            } else {
+                document.getElementById('login-li').style.display = 'block';
+                document.getElementById('signup-li').style.display = 'block';
+            }
+        }
+
+        window.onload = getUserName;
+    </script>
+</body>
+</html>

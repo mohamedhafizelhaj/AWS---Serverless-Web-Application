@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tickets - MicroTix</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>MicroTix</h1>
+        <p>Your ultimate event ticketing platform</p>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li id="login-li" style="display: none;"><a href="login.html">Login</a></li>
+            <li id="signup-li" style="display: none;"><a href="signup.html">Signup</a></li>
+            <li><a href="events.html">Events</a></li>
+            <li><a href="tickets.html">Tickets</a></li>
+            <li><a href="#" id="welcome-message"></a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Tickets</h2>
+        <div class="tabs">
+            <button class="tab-button" onclick="getMyTickets()">My Tickets</button>
+            <button class="tab-button" onclick="showTab('ticket-info')">Ticket Info</button>
+        </div>
+        <div class="tab-content" id="my-tickets" style="display: block;">
+            <h3>My Tickets</h3>
+        </div>
+        <div class="tab-content" id="ticket-info" style="display: none;">
+            <h3>Ticket Info</h3>
+            <p id="ticket-details">Details about the ticket will be displayed here.</p>
+        </div>
+    </main>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.7.2/axios.min.js" integrity="sha512-JSCFHhKDilTRRXe9ak/FJ28dcpOJxzQaCd3Xg8MyF6XFjODhy/YMCM8HW0TFDckNHWUewW+kfvhin43hKtJxAw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+
+        const API_URL = "https://d8z4knscvk.execute-api.localhost.localstack.cloud:4566/g7rlo2115h";
+
+        function showTab(tabId) {
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.style.display = 'none');
+            document.getElementById(tabId).style.display = 'block';
+        }
+
+        function getMyTickets() {
+            const EMAIL = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1])).email;
+
+            axios.get(`${API_URL}/ticket`, {
+                headers: {
+                    'Authorization': localStorage.getItem('id_token'),
+                    'Cache-Control': 'no-cache',
+                    'Email': EMAIL
+                }
+            })
+            .then(response => {
+                createTicketList(response.data);
+            })
+            .catch(error => {
+                alert('Error fetching tickets list');
+                console.error("Error: ", error);
+            });
+        }
+
+        function createTicketList(tickets) {
+            const ticketListContainer = document.getElementById('my-tickets');
+            ticketListContainer.innerHTML = '';
+
+            const ul = document.createElement('ul');
+
+            tickets.records.forEach(record => {
+                const li = document.createElement('li');
+
+                const eventid = record[2].longValue;
+                const code = record[3].stringValue;
+
+                const ticketInfo = `
+                    <div>
+                        <strong>Event ID:</strong> ${eventid}
+                        <strong>Code:</strong> ${code}
+                    </div>
+                `;
+
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = eventid;
+                a.onclick = function() {
+                    getTicketInfo(ticketInfo);
+                };
+
+                li.appendChild(a);
+                ul.appendChild(li);
+            });
+
+            ticketListContainer.appendChild(ul);
+        }
+
+        function getTicketInfo(ticketInfo) {
+            document.getElementById('ticket-info').style.display = 'block';
+
+            const ticketInfoParagraph = document.getElementById('ticket-details');
+            ticketInfoParagraph.innerHTML = ticketInfo;
+        }
+
+        function getUserName() {
+            const ID_TOKEN = localStorage.getItem('id_token');
+
+            if (ID_TOKEN !== null) {
+                const USERNAME = JSON.parse(atob(ID_TOKEN.split('.')[1])).name;
+                document.getElementById('welcome-message').textContent = `Welcome ${USERNAME}`;
+                document.getElementById('login-li').style.display = 'none';
+                document.getElementById('signup-li').style.display = 'none';
+            } else {
+                document.getElementById('login-li').style.display = 'block';
+                document.getElementById('signup-li').style.display = 'block';
+            }
+        }
+
+        window.onload = getUserName;
+    </script>
+</body>
+</html>

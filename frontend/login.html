@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - MicroTix</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1103.0.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>MicroTix</h1>
+        <p>Your ultimate event ticketing platform</p>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li id="login-li" style="display: none;"><a href="login.html">Login</a></li>
+            <li id="signup-li" style="display: none;"><a href="signup.html">Signup</a></li>
+            <li><a href="events.html">Events</a></li>
+            <li><a href="tickets.html">Tickets</a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Login</h2>
+        <form id="login-form">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Login</button>
+        </form>
+        <p>Don't have an account? <a href="signup.html">Signup</a></p>
+    </main>
+    <script>
+        const region = 'us-east-1';
+        const endpoint = "http://localhost:4566";
+
+        AWS.config.update({
+            endpoint, region,
+            accessKeyId: "test", secretAccessKey: "test"
+        });
+
+        const cognito = new AWS.CognitoIdentityServiceProvider();
+
+        document.getElementById("login-form").addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const username = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            const params = {
+                AuthFlow: "USER_PASSWORD_AUTH",
+                ClientId: "xd4tw77gffrovpb4d1ed3192wa",
+                AuthParameters: {
+                    USERNAME: username,
+                    PASSWORD: password
+                }
+            };
+
+            cognito.initiateAuth(params, function(err, data) {
+                if (err) {
+                    alert(err.message || JSON.stringify(err));
+                } else {
+
+                    const ACCESS_TOKEN = data.AuthenticationResult.AccessToken;
+                    const REFRESH_TOKEN = data.AuthenticationResult.RefreshToken;
+                    const IDTOKEN = data.AuthenticationResult.IdToken;
+
+                    saveTokens(ACCESS_TOKEN, REFRESH_TOKEN, IDTOKEN);
+
+                    alert('Successfullly authenticated');
+                    location.href = 'events.html';
+                }
+            });
+
+            function saveTokens(accessToken, refreshToken, idToken) {
+                localStorage.setItem('access_token', accessToken);
+                localStorage.setItem('refresh_token', refreshToken);
+                localStorage.setItem('id_token', idToken);
+            }
+        })
+
+        function getUserName() {
+            const ID_TOKEN = localStorage.getItem('id_token');
+
+            if (ID_TOKEN !== null) {
+                const USERNAME = JSON.parse(atob(ID_TOKEN.split('.')[1])).name; 
+                document.getElementById('welcome-message').textContent = `Welcome ${USERNAME}`;
+                document.getElementById('login-li').style.display = 'none';
+                document.getElementById('signup-li').style.display = 'none';
+            } else {
+                document.getElementById('login-li').style.display = 'block';
+                document.getElementById('signup-li').style.display = 'block';
+            }
+        }
+
+        window.onload = getUserName
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+[
+    {
+        "Name": "username",
+        "AttributeDataType": "String",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": true,
+        "Required": false,
+        "StringAttributeConstraints": {
+            "MinLength": "0",
+            "MaxLength": "2048"
+        }
+    },
+    {
+        "Name": "email",
+        "AttributeDataType": "String",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": true,
+        "Required": false,
+        "StringAttributeConstraints": {
+            "MinLength": "0",
+            "MaxLength": "2048"
+        }
+    },
+    {
+        "Name": "email_verified",
+        "AttributeDataType": "Boolean",
+        "DeveloperOnlyAttribute": true,
+        "Mutable": true,
+        "Required": false
+    },
+    {
+        "Name": "role",
+        "AttributeDataType": "String",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": false,
+        "Required": false
+    },
+    {
+        "Name": "updated_at",
+        "AttributeDataType": "Number",
+        "DeveloperOnlyAttribute": false,
+        "Mutable": true,
+        "Required": false,
+        "NumberAttributeConstraints": {
+            "MinValue": "0"
+        }
+    }
+]

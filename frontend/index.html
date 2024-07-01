@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MicroTix</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>MicroTix</h1>
+        <p>Your ultimate event ticketing platform</p>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li id="login-li" style="display: none;"><a href="login.html">Login</a></li>
+            <li id="signup-li" style="display: none;"><a href="signup.html">Signup</a></li>
+            <li><a href="events.html">Events</a></li>
+            <li><a href="tickets.html">Tickets</a></li>
+            <li><a href="#" id="welcome-message"></a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Welcome to MicroTix!</h2>
+        <p>Find and manage tickets for your favorite events effortlessly.</p>
+    </main>
+
+    <script>
+                
+        function getUserName() {
+            const ID_TOKEN = localStorage.getItem('id_token');
+
+            if (ID_TOKEN !== null) {
+                const USERNAME = JSON.parse(atob(ID_TOKEN.split('.')[1])).name; 
+                document.getElementById('welcome-message').textContent = `Welcome ${USERNAME}`;
+                document.getElementById('login-li').style.display = 'none';
+                document.getElementById('signup-li').style.display = 'none';
+            } else {
+                document.getElementById('login-li').style.display = 'block';
+                document.getElementById('signup-li').style.display = 'block';
+            }
+        }
+
+        window.onload = getUserName
+    </script>
+</body>
+</html>
