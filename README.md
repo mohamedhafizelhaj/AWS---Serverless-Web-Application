@@ -2,7 +2,7 @@
 
 This README will provide an overview of the serverless architecture for the application. It will breifly describe each component of the architecture.
 
-Since I couldn't open an AWS account at this stage, I used LocalStack, a service that emulates AWS services locally. I configured the AWS CLI to communicate with LocalStack instead of the AWS cloud. Although LocalStack provides a UI, I primarily used the CLI to better replicate the actual AWS Management Console experience. I turned to the UI mainly when I struggled with the CLI or wanted to track CloudWatch metrics visually.
+Since I couldn't open an AWS account at this stage, I used LocalStack, a service that emulates AWS services locally. I configured the AWS CLI to communicate with LocalStack instead of the AWS cloud. Although LocalStack provides a UI, I primarily used the CLI as it is an AWS-native tool, to replicate the actual AWS experience as much as possible. I turned to the UI mainly when I struggled with the CLI or wanted to track CloudWatch metrics visually.
 
 ## Table of Contents
 
