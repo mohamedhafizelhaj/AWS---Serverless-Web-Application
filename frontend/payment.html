@@ -24,32 +24,42 @@
     <main>
         <h2>Payment</h2>
         <h1>Click the button to simulate payment</h1>
-        <button onclick="pay()">Pay Now</button>
+        <button onclick="pay()" id="pay-button">Pay Now</button>
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.7.2/axios.min.js" integrity="sha512-JSCFHhKDilTRRXe9ak/FJ28dcpOJxzQaCd3Xg8MyF6XFjODhy/YMCM8HW0TFDckNHWUewW+kfvhin43hKtJxAw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="scripts.js"></script>
 
     <script>
 
         function pay() {
+            disableButton('pay-button');
+
             const queryString = window.location.search;
             const urlParams = new URLSearchParams(queryString);
-            const eventId = urlParams.get('event');
+            const eventName = urlParams.get('event');
 
             const EMAIL = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1])).email;
 
-            const API = "https://d8z4knscvk.execute-api.localhost.localstack.cloud:4566/g7rlo2115h";
-            axios.post(`${API}/event/${eventId}/payment`, {username: EMAIL}, {
+            const API = "https://8e70c031.execute-api.localhost.localstack.cloud:4566/dev";
+            axios.post(`${API}/event/payment`, {event_name: eventName, username: EMAIL}, {
                 headers: {
-                    'Authorization': localStorage.getItem('id_token')
+                    'Authorization': `Bearer ${localStorage.access_token}`
                 }
             })
                 .then(function(response) {
                     alert("Payed Successfully")
                 })
                 .catch(function(error) {
-                    alert('Error paying for the event');
+                    if (error.response && error.response.status === 403) {
+                    alert("You do not have permission to pay for this event.");
+                } else {
+                    alert("Error paying for event");
                     console.error("Error: ", error);
+                }
+                })
+                .finally(function() {
+                    enableButton('pay-button');
                 })
         }
         

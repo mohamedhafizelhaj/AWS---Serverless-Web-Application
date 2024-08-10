@@ -42,52 +42,43 @@
             <form id="create-event-form">
                 <label for="event-name">Event Name:</label>
                 <input type="text" id="event-name" name="name" required>
-                <label for="event-start-date">Event Start Date:</label>
-                <input type="date" id="event-start-date" name="starttime" required>
-                <label for="event-end-date">Event End Date:</label>
-                <input type="date" id="event-end-date" name="endtime" required>
                 <label for="event-location">Event Location:</label>
                 <input type="text" id="event-location" name="address" required>
                 <label for="ticket-price">Ticket Price:</label>
                 <input type="text" id="ticket-price" name="ticketprice" required>
-                <label for="discount">Discount:</label>
-                <input type="text" id="discount" name="discount">
                 <label for="event-description">Event Description:</label>
                 <textarea id="event-description" name="description" required></textarea>
-                <button type="submit">Create Event</button>
+                <button type="submit" id="create-event-button">Create Event</button>
             </form>
         </div>
         <div class="tab-content" id="update-event" style="display: none;">
             <h3>Update Event</h3>
             <form onsubmit="updateEvent(event)">
-                <label for="event-id-update">Event ID:</label>
-                <input type="text" id="event-id-update" name="id" required>
+                <label for="event-dropdown">Choose an event:</label>
+                <select id="event-dropdown"></select>
                 <label for="event-name-update">Event Name:</label>
                 <input type="text" id="event-name-update" name="name">
-                <label for="event-start-date-update">Event Start Date:</label>
-                <input type="date" id="event-start-date-update" name="starttime">
-                <label for="event-end-date-update">Event End Date:</label>
-                <input type="date" id="event-end-date-update" name="endtime">
                 <label for="event-description-update">Event Description:</label>
                 <textarea id="event-description-update" name="description"></textarea>
-                <button type="submit">Update Event</button>
+                <button type="submit" id="update-event-button">Update Event</button>
             </form>
         </div>
         <div class="tab-content" id="delete-event" style="display: none;">
             <h3>Delete Event</h3>
             <form onsubmit="deleteEvent(event)">
-                <label for="event-id-delete">Event ID:</label>
-                <input type="text" id="event-id-delete" name="id" required>
-                <button type="submit">Delete Event</button>
+                <label for="event-dropdown-delete">Choose an event to delete:</label>
+                <select id="event-dropdown-delete"></select>
+                <button type="submit" id="delete-event-button">Delete Event</button>
             </form>
         </div>
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.7.2/axios.min.js" integrity="sha512-JSCFHhKDilTRRXe9ak/FJ28dcpOJxzQaCd3Xg8MyF6XFjODhy/YMCM8HW0TFDckNHWUewW+kfvhin43hKtJxAw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="scripts.js"></script>
     
     <script>
 
-        const API = "https://d8z4knscvk.execute-api.localhost.localstack.cloud:4566/g7rlo2115h";
+        const API = "https://8e70c031.execute-api.localhost.localstack.cloud:4566/dev";
 
         function showTab(tabId, eventInfo = null) {
             const tabs = document.querySelectorAll('.tab-content');
@@ -95,22 +86,40 @@
             document.getElementById(tabId).style.display = 'block';
 
             if (tabId === 'event-list') {
-                getEventList();
+                getEventList('display');
             } else if (tabId === 'event-info') {
                 if (eventInfo)
                     getEventInfo(eventInfo);
+            } else if (tabId === 'update-event') {
+                getEventList('dropdown');
+            } else if (tabId === 'delete-event') {
+                getEventList('dropdown-delete');
             }
         }
 
-        function getEventList() {
+        function getEventList(operation) {
             axios.get(`${API}/event`, {
                 headers: {
-                    'Authorization': localStorage.id_token,
+                    'Authorization': `Bearer ${localStorage.access_token}`,
                     'Cache-Control': 'no-cache'
                 }
             })
             .then(function (response) {
-                createEventList(response.data);
+                switch (operation) {
+                    case 'display':
+                        createEventList(response.data);
+                        break;
+                
+                    case 'dropdown':
+                        createEventDropdown(response.data, 'update');
+                        break;
+
+                    case 'dropdown-delete':
+                        createEventDropdown(response.data, 'delete');
+
+                    default:
+                        break;
+                }
             })
             .catch(function (error) {
                 alert('Error fetching event list');
@@ -118,34 +127,26 @@
             });
         }
 
-        function createEventList(events) {
+        function createEventList(records) {
             const eventListContainer = document.getElementById('event-list');
             eventListContainer.innerHTML = '';
 
             const ul = document.createElement('ul');
 
-            events.records.forEach(record => {
+            records.forEach(record => {
                 const li = document.createElement('li');
 
-                const eventId = record[1].stringValue;
-                const eventName = record[2].stringValue;
-                const eventDescription = record[3].stringValue;
-                const eventStartDate = record[4].stringValue;
-                const eventEndDate = record[5].stringValue;
-                const eventLocation = record[6].stringValue;
-                const ticketPrice = record[7].stringValue;
-                const discount = record[8].stringValue;
+                const eventName = record.name;
+                const eventDescription = record.description;
+                const eventLocation = record.address;
+                const ticketPrice = record.ticketprice;
 
                 const eventInfo = `
                     <div>
-                        <div style="display: none;" id="event_id">${eventId}</div>
-                        <strong>Name:</strong> ${eventName}<br>
+                        <strong>Name:</strong> <div id="event_name_display">${eventName}</div><br>
                         <strong>Description:</strong> ${eventDescription}<br>
-                        <strong>Start Date:</strong> ${eventStartDate}<br>
-                        <strong>End Date:</strong> ${eventEndDate}<br>
                         <strong>Location:</strong> ${eventLocation}<br>
                         <strong>Ticket Price:</strong> ${ticketPrice}<br>
-                        <strong>Discount:</strong> ${discount}
                     </div>
                 `;
 
@@ -170,23 +171,24 @@
             const button = document.createElement('button');
             button.textContent = 'Request a Ticket';
 
-            const eventId = document.getElementById('event_id').innerHTML
+            const eventName = document.getElementById('event_name_display').innerHTML
             button.onclick = function() {
-                requestTicket(eventId);
+                requestTicket(eventName);
             };
 
             eventInfoParagraph.appendChild(button);
 
-            const ROLE = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1]))['custom:role'];
+            const ROLE = JSON.parse(atob(localStorage.getItem('access_token').split('.')[1]))['custom:role'];
             button.style = ROLE == 'customer' ? 'display: block;' : 'display: none';
         }
 
-        function requestTicket(eventId) {
-            window.location.href = `payment.html?event=${eventId}`;
+        function requestTicket(eventName) {
+            window.location.href = `payment.html?event=${eventName}`;
         }
 
         document.getElementById('create-event-form').addEventListener('submit', function(event) {
             event.preventDefault();
+            disableButton('create-event-button');
             createEvent(event.target);
         });
 
@@ -200,58 +202,100 @@
 
             axios.post(`${API}/event`, eventOject, {
                 headers: {
-                    'Authorization': localStorage.getItem('id_token')
+                    'Authorization': `Bearer ${localStorage.access_token}`
                 }
             })
             .then(function (response) {
                 alert("Event created successfully");
             })
             .catch(function (error) {
-                alert("Error creating event");
-                console.error("Error: ", error);
+                if (error.response && error.response.status === 403) {
+                    alert("You do not have permission to create an event.");
+                } else {
+                    alert("Error creating event");
+                    console.error("Error: ", error);
+                }
+            })
+            .finally(function() {
+                enableButton('create-event-form');
+            });
+        }
+
+        function createEventDropdown(records, operation) {
+            const eventDropdown = operation == 'update' ? document.getElementById('event-dropdown') : document.getElementById('event-dropdown-delete');
+            eventDropdown.innerHTML = '';
+
+            records.forEach(record => {
+                const option = document.createElement('option');
+                
+                option.value = record.name;
+                option.textContent = record.name;
+
+                eventDropdown.append(option);
             });
         }
 
         function updateEvent(event) {
             event.preventDefault();
+            disableButton('update-event-button');
 
-            const formData = new FormData(event.target);
-            const eventId = formData.get('id');
+            const event_old_name = document.getElementById('event-dropdown').value;
+            const event_new_name = document.getElementById('event-name-update').value || event_old_name;
+            const event_description = document.getElementById('event-description-update').value;
 
-            const props = Object.fromEntries(Array.from(formData.entries()));
+            props = {
+                old_name: document.getElementById('event-dropdown').value,
+                new_name: event_new_name,
+                description: event_description
+            };
 
-            axios.put(`${API}/event/${eventId}`, props, {
+            axios.put(`${API}/event`, props, {
                 headers: {
-                    'Authorization': localStorage.getItem('id_token')
+                    'Authorization': `Bearer ${localStorage.access_token}`
                 }
             })
             .then(function (response) {
                 alert("Event updated successfully");
             })
             .catch(function (error) {
-                alert("Error updating event");
-                console.error("Error: ", error);
-            });
+                if (error.response && error.response.status === 403) {
+                    alert("You do not have permission to update this event.");
+                } else {
+                    alert("Error updating event");
+                    console.error("Error: ", error);
+                }
+            })
+            .finally(function() {
+                enableButton('update-event-form');
+            });;
         }
 
         function deleteEvent(event) {
             event.preventDefault();
+            disableButton('delete-event-button');
 
-            const formData = new FormData(event.target);
-            const eventId = formData.get('id');
+            const eventInfo = { name: document.getElementById('event-dropdown-delete').value }
 
-            axios.delete(`${API}/event/${eventId}`, {
+            axios.delete(`${API}/event`, {
                 headers: {
-                    'Authorization': localStorage.getItem('id_token')
-                }
+                    'Authorization': `Bearer ${localStorage.access_token}`
+                },
+                data: eventInfo
             })
             .then(function (response) {
                 alert("Event deleted successfully");
             })
             .catch(function (error) {
-                alert("Error deleting event");
-                console.error("Error: ", error);
-            });
+                if (error.response && error.response.status === 403) {
+                    alert("You do not have permission to delete this event.");
+                } else {
+                    alert("Error deleting event");
+                    console.error("Error: ", error);
+                }
+            })
+            .finally(function() {
+                enableButton('delete-event-form');
+            });;
         }
 
         function getUserName() {

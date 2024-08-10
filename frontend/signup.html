@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signup - MicroTix</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1103.0.min.js"></script>
 </head>
 <body>
     <header>
@@ -30,10 +29,14 @@
             <input type="email" id="email" name="email" required>
             <label for="password">Password:</label>
             <input type="password" id="password" name="password" required>
-            <button type="submit">Signup</button>
+            <button type="submit" id="signup-button">Signup</button>
         </form>
         <p>Already have an account? <a href="login.html">Login</a></p>
     </main>
+
+    <script src="scripts.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1103.0.min.js"></script>
+
     <script>
         
         const region = 'us-east-1';
@@ -45,16 +48,18 @@
         });
 
         const cognito = new AWS.CognitoIdentityServiceProvider();
+        const ClientId = "z78r432fu0mezko9fa0qwcrslj";
 
         document.getElementById("signup-form").addEventListener('submit', function(event) {
             event.preventDefault();
+            disableButton('signup-button');
 
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
             const params = {
-                ClientId: 'xd4tw77gffrovpb4d1ed3192wa',
+                ClientId: ClientId,
                 Username: email,
                 Password: password,
                 UserAttributes: [
@@ -68,8 +73,8 @@
                 if (err) {
                     alert(err.message || JSON.stringify(err));
                 } else {
-                    alert('Signup successful! Please check your email for verification link.');
-                    location.href = 'verify_account?username=' + email
+                    alert('Signup successful! You can login now.');
+                    location.href = 'login.html'
                 }
             });
         });

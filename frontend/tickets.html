@@ -38,7 +38,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.7.2/axios.min.js" integrity="sha512-JSCFHhKDilTRRXe9ak/FJ28dcpOJxzQaCd3Xg8MyF6XFjODhy/YMCM8HW0TFDckNHWUewW+kfvhin43hKtJxAw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script>
 
-        const API_URL = "https://d8z4knscvk.execute-api.localhost.localstack.cloud:4566/g7rlo2115h";
+        const API = "https://8e70c031.execute-api.localhost.localstack.cloud:4566/dev";
 
         function showTab(tabId) {
             const tabs = document.querySelectorAll('.tab-content');
@@ -49,9 +49,9 @@
         function getMyTickets() {
             const EMAIL = JSON.parse(atob(localStorage.getItem('id_token').split('.')[1])).email;
 
-            axios.get(`${API_URL}/ticket`, {
+            axios.get(`${API}/ticket`, {
                 headers: {
-                    'Authorization': localStorage.getItem('id_token'),
+                    'Authorization': `Bearer ${localStorage.access_token}`,
                     'Cache-Control': 'no-cache',
                     'Email': EMAIL
                 }

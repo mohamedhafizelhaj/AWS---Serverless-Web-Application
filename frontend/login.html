@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - MicroTix</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1103.0.min.js"></script>
 </head>
 <body>
     <header>
@@ -28,10 +27,14 @@
             <input type="email" id="email" name="email" required>
             <label for="password">Password:</label>
             <input type="password" id="password" name="password" required>
-            <button type="submit">Login</button>
+            <button type="submit" id="login-button">Login</button>
         </form>
         <p>Don't have an account? <a href="signup.html">Signup</a></p>
     </main>
+
+    <script src="scripts.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1103.0.min.js"></script>
+    
     <script>
         const region = 'us-east-1';
         const endpoint = "http://localhost:4566";
@@ -42,16 +45,18 @@
         });
 
         const cognito = new AWS.CognitoIdentityServiceProvider();
+        const ClientId = "z78r432fu0mezko9fa0qwcrslj";
 
         document.getElementById("login-form").addEventListener('submit', function(event) {
             event.preventDefault();
+            disableButton('login-button');
 
             const username = document.getElementById("email").value;
             const password = document.getElementById("password").value;
 
             const params = {
                 AuthFlow: "USER_PASSWORD_AUTH",
-                ClientId: "xd4tw77gffrovpb4d1ed3192wa",
+                ClientId: ClientId,
                 AuthParameters: {
                     USERNAME: username,
                     PASSWORD: password

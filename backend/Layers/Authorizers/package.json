@@ -1,0 +1,9 @@
+{
+    "name": "authorizers-layer",
+    "version": "1.0.0",
+    "main": "index.js",
+    "dependencies": {
+        "jsonwebtoken": "^8.5.1",
+        "jwks-rsa": "^2.0.4"
+    }
+}

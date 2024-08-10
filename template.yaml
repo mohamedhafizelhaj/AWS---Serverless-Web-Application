@@ -1,0 +1,1106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A template for the serverless web application
+
+Parameters:
+  FrontEndBucket:
+    Type: String
+    Description: The name of the S3 bucket for the front-end website.
+  LambdaBucket:
+    Type: String
+    Description: The name of the S3 bucket for the lambda function deployments
+
+Resources:
+  
+  ######################################
+  #             CloudFront             #
+  ######################################
+
+  CDNOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: CDNOriginAccessControleForS3
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CachingOptimizedCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        MinTTL: 1
+        Name: CachingOptimized
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+
+  CDNDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt S3FrontEndBucket.RegionalDomainName
+            Id: MainFrontEndBucket
+            OriginAccessControlId: !Ref CDNOriginAccessControl
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          CachePolicyId: !Ref CachingOptimizedCachePolicy
+          Compress: true
+          TargetOriginId: MainFrontEndBucket
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  ######################################
+  #         Frontend S3 Bucket         #
+  ######################################
+
+  S3FrontEndBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref FrontEndBucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  FrontEndBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3FrontEndBucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Resource: !Join
+              - ''
+              - - !GetAtt S3FrontEndBucket.Arn
+                - /*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CDNDistribution}
+
+  ######################################
+  #               Cognito              #
+  ######################################
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      Schema: 
+        - AttributeDataType: String
+          Mutable: true
+          Name: name
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: "100"
+            MinLength: "3"
+        - AttributeDataType: String
+          Mutable: true
+          Name: email
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: "100"
+            MinLength: "3"
+        - AttributeDataType: String
+          Mutable: true
+          Name: custom:role
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: "9"
+            MinLength: "8"
+      UserPoolName: CognitoUserPool
+      UserPoolTags:
+        Project: Serverless-Web-Application
+      UsernameAttributes: 
+        - email
+      UsernameConfiguration:
+        CaseSensitive: true
+      UserPoolAddOns:
+        AdvancedSecurityMode: Enforced
+      LambdaConfig:
+        PreSignUp: !GetAtt AutoConfirmFunction.Arn
+        PreTokenGenerationConfig:
+          LambdaArn: !GetAtt AddUserRoleFunction.Arn
+          LambdaVersion: V2_0
+
+  AutoConfirmFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: auto-confirm.zip
+      Description: Automatically confirm user identity
+      FunctionName: AutoConfirm
+      Handler: index.handler
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaLoggingRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Cognito
+      Timeout: 20
+
+  AddUserRoleFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: add-user-role.zip
+      Description: add user role attribute to the access toke
+      FunctionName: AddUserRole
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaCognitoRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Cognito
+      Timeout: 20
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ExplicitAuthFlows: 
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders: 
+        - COGNITO
+      UserPoolId: !Ref CognitoUserPool
+
+  ######################################
+  #           Lambda Layers            #
+  ######################################
+
+  AuthorizersLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - nodejs20.x
+      Content:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: authorizers-layer.zip
+      Description: comman layer used by lambda authorizers
+      LayerName: AuthorizersLayer
+
+  BusinessCoreLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - nodejs20.x
+      Content:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: business-core-layer.zip
+      Description: comman layer used by business-logic functions
+      LayerName: BusinessCoreLayer
+
+  ######################################
+  #      Lambda Execution Roles        #
+  ######################################
+
+  LambdaLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies: 
+        - PolicyName: LambdaLoggingPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+      RoleName: LambdaLoggingRole
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  LambdaAuroraRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AuroraPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds-data:ExecuteStatement
+                  - rds-data:BatchExecuteStatement
+                Resource: !GetAtt AuroraDBCluster.DBClusterArn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  LambdaSESRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaSESPublishPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  LambdaCognitoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PreTokenGenPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                Resource: "*"
+
+  ######################################
+  #         Lambda Authorizers         #
+  ######################################
+
+  CustomerAuthorizer:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: customer-authorizer.zip
+      Description: Authorizes that the request is coming from a customer
+      FunctionName: CustomerAuthorizer
+      Handler: index.handler
+      Layers: 
+        - !Ref AuthorizersLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaLoggingRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Authorizers
+      Timeout: 20
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+
+  OrganizerAuthorizer:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: organizer-authorizer.zip
+      Description: Authorizes that the request is coming from an organizer
+      FunctionName: OrganizerAuthorizer
+      Handler: index.handler
+      Layers: 
+        - !Ref AuthorizersLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaLoggingRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Authorizers
+      Timeout: 20
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+
+  GlobalAuthorizer:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: global-authorizer.zip
+      Description: Authorizes that the request contains a valid jwt token 
+      FunctionName: GlobalAuthorizer
+      Handler: index.handler
+      Layers: 
+        - !Ref AuthorizersLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaLoggingRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Authorizers
+      Timeout: 20
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+
+  ######################################
+  #   Business-logic lambda functions  #
+  ######################################
+
+  GetEventsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: get-events.zip
+      FunctionName: GetEvents
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  CreateEventFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: create-event.zip
+      FunctionName: CreateEvent
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  UpdateEventFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: update-event.zip
+      FunctionName: UpdateEvent
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  DeleteEventFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: delete-event.zip
+      FunctionName: DeleteEvent
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  GetMyTicketsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: get-my-tickets.zip
+      FunctionName: GetMyTickets
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  GetTicketInfoFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: get-ticket-info.zip
+      FunctionName: GetTicketInfo
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  PayForTicketFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: pay-for-ticket.zip
+      FunctionName: PayForTicket
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 90
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+          SQS_QUEUE_URL: !Ref SQS
+
+  SendEmailFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: send-email.zip
+      DeadLetterConfig:
+        TargetArn: !GetAtt SQSDeadLetter.Arn
+      FunctionName: SendEmail
+      Handler: index.handler
+      Layers: 
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaSESRole.Arn
+      Runtime: nodejs20.x
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: Business-logic
+      Timeout: 20
+
+  ######################################
+  #       Networking Components        #
+  ######################################
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: AWS::Region
+      CidrBlock: 10.0.1.0/24
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+      VpcId: !Ref VPC
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: AWS::Region
+      CidrBlock: 10.0.2.0/24
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+      VpcId: !Ref VPC
+
+  ######################################
+  #     Aurora Serverless Cluster      #
+  ######################################
+
+  AuroraSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora Serverless
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  AuroraSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Aurora credentials
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "admin"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+      Name: Serverless-Web-Application-AuroraSecret
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  AuroraDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: "8.0.mysql_aurora.3.02.0"
+      EngineMode: provisioned
+      EnableHttpEndpoint: true
+      DatabaseName: serverless_web_application
+      MasterUsername: '{{resolve:secretsmanager:Serverless-Web-Application-AuroraSecret:SecretString:username}}'
+      MasterUserPassword: '{{resolve:secretsmanager:Serverless-Web-Application-AuroraSecret:SecretString:password}}'
+      DBSubnetGroupName: !Ref AuroraSubnetGroup
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 2
+        MaxCapacity: 16
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  ######################################
+  #   SQS, SES and Async processing    #
+  ######################################
+
+  SQS:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SQSDeadLetter.Arn
+        maxReceiveCount: 5
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  SQSPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SQS
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: SQS:SendMessage
+            Resource: !GetAtt SQS.Arn
+            Condition:
+              StringEquals:
+                aws:sourceArn: !GetAtt PayForTicketFunction.Arn
+
+  SendEmailEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SQS.Arn
+      FunctionName: !Ref SendEmailFunction
+
+  SQSDeadLetter:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  SESIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties: 
+      EmailIdentity: "mohhafiz001@gmail.com"
+
+  ######################################
+  #             API Gateway            #
+  ######################################
+
+  API:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: API
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - !Sub 'https://${CDNDistribution.DomainName}'
+        AllowHeaders:
+          - '*'
+        AllowMethods:
+          - '*'
+      Tags:
+        Project: Serverless-Web-Application
+
+  # A role for invoking lambda functions
+  InvokeLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Description: A role for invoking lambda functions
+      Policies:
+        - PolicyName: "InvokeLambdaFunctions"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  lambda:InvokeFunction
+                Resource: '*'
+      RoleName: "InvokeLambdaRole"
+      Tags: 
+        - Key: Project
+          Value: Serverless-Web-Application
+
+  APICustomerAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref API
+      AuthorizerCredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      AuthorizerPayloadFormatVersion: "2.0"
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerType: REQUEST
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CustomerAuthorizer.Arn}/invocations"
+      EnableSimpleResponses: false
+      IdentitySource:
+        - $request.header.Authorization
+      Name: CustomerAuthorizer
+
+  APIOrganizerAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref API
+      AuthorizerCredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      AuthorizerPayloadFormatVersion: "2.0"
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerType: REQUEST
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrganizerAuthorizer.Arn}/invocations"
+      EnableSimpleResponses: false
+      IdentitySource:
+        - $request.header.Authorization
+      Name: OrganizerAuthorizer
+
+  APIGlobalAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref API
+      AuthorizerCredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      AuthorizerPayloadFormatVersion: "2.0"
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerType: REQUEST
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GlobalAuthorizer.Arn}/invocations"
+      EnableSimpleResponses: false
+      IdentitySource:
+        - $request.header.Authorization
+      Name: GlobalAuthorizer
+
+  APIGetEventsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref API
+      CredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      IntegrationMethod: POST
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetEventsFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  APIGetEventsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref API
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APIGlobalAuthorizer
+      RouteKey: GET /event
+      Target: !Sub integrations/${APIGetEventsIntegration}
+
+  APICreateEventIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref API
+      CredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      IntegrationMethod: POST
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateEventFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  APICreateEventRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref API
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APIOrganizerAuthorizer
+      RouteKey: POST /event
+      Target: !Sub integrations/${APICreateEventIntegration}
+
+  APIUpdateEventIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref API
+      CredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      IntegrationMethod: POST
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateEventFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  APIUpdateEventRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref API
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APIOrganizerAuthorizer
+      RouteKey: PUT /event
+      Target: !Sub integrations/${APIUpdateEventIntegration}
+
+  APIDeleteEventIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref API
+      CredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      IntegrationMethod: POST
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteEventFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  APIDeleteEventRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref API
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APIOrganizerAuthorizer
+      RouteKey: DELETE /event
+      Target: !Sub integrations/${APIDeleteEventIntegration}
+
+  APIPayForTicketIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref API
+      CredentialsArn: !GetAtt InvokeLambdaRole.Arn
+      IntegrationMethod: POST
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PayForTicketFunction.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  APIPayForTicketRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref API
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APICustomerAuthorizer
+      RouteKey: POST /event/payment
+      Target: !Sub integrations/${APIPayForTicketIntegration}
+
+  APIDevStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref API
+      AutoDeploy: true
+      StageName: dev
+
+  APIDevDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref API
+      StageName: !Ref APIDevStage
+
+  APIUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages: 
+        - ApiId: !Ref API
+          Stage: !Ref APIDevDeployment
+      Description: Throttling settings for the API
+      Throttle:
+        BurstLimit: 20
+        RateLimit: 10
+
+  ######################################
+  #        Application setup           #
+  ######################################
+
+  CreateEventsTableFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: create-events-table.zip
+      FunctionName: CreateEventsTableFunction
+      Handler: index.handler
+      Layers:
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: ApplicationSetup
+      Timeout: 30
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  CreateTicketsTableFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: create-tickets-table.zip
+      FunctionName: CreateTicketsTableFunction
+      Handler: index.handler
+      Layers:
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: ApplicationSetup
+      Timeout: 30
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  InsertSampleEventsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: insert-sample-events.zip
+      FunctionName: InsertSampleEventsFunction
+      Handler: index.handler
+      Layers:
+        - !Ref BusinessCoreLayer
+      LoggingConfig:
+        LogFormat: JSON
+      PackageType: Zip
+      Role: !GetAtt LambdaAuroraRole.Arn
+      Runtime: nodejs20.x
+      Tags:
+        - Key: Project
+          Value: Serverless-Web-Application
+        - Key: FunctionCategory
+          Value: ApplicationSetup
+      Timeout: 30
+      Environment:
+        Variables:
+          AURORA_CLUSTER_ARN: !GetAtt AuroraDBCluster.DBClusterArn
+          AURORA_SECRET_ARN: !Ref AuroraSecret
+          DATABASE: serverless_web_application
+
+  InvokeCreateEventsTableLambda:
+    Type: Custom::InvokeLambda
+    Properties:
+      ServiceToken: !GetAtt CreateEventsTableFunction.Arn
+
+  InvokeCreateTicketsTableLambda:
+    Type: Custom::InvokeLambda
+    Properties:
+      ServiceToken: !GetAtt CreateTicketsTableFunction.Arn
+
+  InvokeInsertSampleEventsLambda:
+    Type: Custom::InvokeLambda
+    Properties:
+      ServiceToken: !GetAtt InsertSampleEventsFunction.Arn
+
+  ######################################
+  #               Outputs              #
+  ######################################
+
+Outputs:
+  CloudFrontDistributionDomainName:
+    Description: CloudFront Distribution URL
+    Value: !Join
+      - ''
+      - - https://
+        - !GetAtt CDNDistribution.DomainName
+
+  APIEndpoint:
+    Description: API Endpoint
+    Value: !Join
+      - ''
+      - - https://
+        - !Ref API
+        - .execute-api
+        - .localhost.localstack.cloud:4566/
+        - !Ref APIDevStage
+
+  CognitoUserPoolClientID:
+    Description: Cognito user pool client ID
+    Value: !Ref CognitoUserPoolClient
